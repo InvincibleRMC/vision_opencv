@@ -34,8 +34,34 @@
 ####################################################################
 
 import sys
+from typing import TYPE_CHECKING, Literal, Optional, Tuple, Union
 
 import sensor_msgs.msg
+
+if TYPE_CHECKING:
+    from cv2 import Mat
+    from cv2.typing import MatLike
+    from numpy import dtype
+    from numpy.typing import NDArray
+    from std_msgs.msg import Header
+
+# Taken from sensor_msgs/sensor_msgs/image_encodings.hpp
+CommonEncodings = Literal["rgb8", "rgba8", "rgb16", "rgba16", "bgr8", "brga8", "bgr16", "bgra16",
+                          "mono8", "mono16"]
+OpenCVEncodings = Literal["8UC1", "8UC2", "8UC3", "8UC4", "8SC1", "8SC2", "8SC3", "8SC4", "16UC1",
+                          "16UC2", "16UC3", "16UC4", "16SC1", "16SC2", "16SC3", "16SC4", "32SC1",
+                          "32SC2", "32SC3", "32SC4", "32FC1", "32FC2", "32FC3", "32FC4", "64FC1",
+                          "64FC2", "64FC3", "64FC4"]
+BayerEncodings = Literal["bayer_rggb8", "bayer_bggr8", "bayer_gbrg8", "bayer_grbg8",
+                         "bayer_rggb16", "bayer_bggr16", "bayer_gbrg16", "bayer_grbg16"]
+YUVEncodings = Literal["uyvy", "yuyv", "nv21", "nv24"]
+ImageEncodings = Union[CommonEncodings, OpenCVEncodings, BayerEncodings, YUVEncodings]
+PassThroughEncoding = Union[ImageEncodings, Literal["passthrough"]]
+
+DSTFormat = Literal["bmp", "dib", "jpeg", "jpg", "jpe", "jp2", "png", "pbm", "pgm", "ppm", "sr"
+                    "ras", "tiff", "tif"]
+
+NumpyDepths = Literal["uint8", "int8", "uint16", "int16", "int32", "float32", "float64"]
 
 
 class CvBridgeError(TypeError):
@@ -67,13 +93,12 @@ class CvBridge(object):
 
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         import cv2
         self.cvtype_to_name = {}
-        self.cvdepth_to_numpy_depth = {cv2.CV_8U: 'uint8', cv2.CV_8S: 'int8',
-                                       cv2.CV_16U: 'uint16', cv2.CV_16S: 'int16',
-                                       cv2.CV_32S: 'int32', cv2.CV_32F: 'float32',
-                                       cv2.CV_64F: 'float64'}
+        self.cvdepth_to_numpy_depth: dict[int, NumpyDepths] = {
+            cv2.CV_8U: 'uint8', cv2.CV_8S: 'int8', cv2.CV_16U: 'uint16', cv2.CV_16S: 'int16',
+            cv2.CV_32S: 'int32', cv2.CV_32F: 'float32', cv2.CV_64F: 'float64'}
 
         for t in ['8U', '8S', '16U', '16S', '32S', '32F', '64F']:
             for c in [1, 2, 3, 4]:
@@ -85,14 +110,15 @@ class CvBridge(object):
                                      'float64': '64F'}
         self.numpy_type_to_cvtype.update(dict((v, k) for (k, v) in self.numpy_type_to_cvtype.items()))
 
-    def dtype_with_channels_to_cvtype2(self, dtype, n_channels):
+    def dtype_with_channels_to_cvtype2(self, dtype: 'dtype', n_channels: int) -> str:
         return '%sC%d' % (self.numpy_type_to_cvtype[dtype.name], n_channels)
 
-    def cvtype2_to_dtype_with_channels(self, cvtype):
-        from cv_bridge.boost.cv_bridge_boost import CV_MAT_CNWrap, CV_MAT_DEPTHWrap
+    def cvtype2_to_dtype_with_channels(self, cvtype: int) -> Tuple[NumpyDepths, int]:
+        from cv_bridge.boost.cv_bridge_boost import (CV_MAT_CNWrap,
+                                                     CV_MAT_DEPTHWrap)
         return self.cvdepth_to_numpy_depth[CV_MAT_DEPTHWrap(cvtype)], CV_MAT_CNWrap(cvtype)
 
-    def encoding_to_cvtype2(self, encoding):
+    def encoding_to_cvtype2(self, encoding: ImageEncodings) -> int:
         from cv_bridge.boost.cv_bridge_boost import getCvType
 
         try:
@@ -100,10 +126,12 @@ class CvBridge(object):
         except RuntimeError as e:
             raise CvBridgeError(e)
 
-    def encoding_to_dtype_with_channels(self, encoding):
+    def encoding_to_dtype_with_channels(self, encoding: ImageEncodings) -> Tuple[str, int]:
         return self.cvtype2_to_dtype_with_channels(self.encoding_to_cvtype2(encoding))
 
-    def compressed_imgmsg_to_cv2(self, cmprs_img_msg, desired_encoding='passthrough'):
+    def compressed_imgmsg_to_cv2(self, cmprs_img_msg: sensor_msgs.msg.CompressedImage,
+                                 desired_encoding: PassThroughEncoding = 'passthrough'
+                                 ) -> 'MatLike':
         """
         Convert a sensor_msgs::CompressedImage message to an OpenCV :cpp:type:`cv::Mat`.
 
@@ -128,8 +156,8 @@ class CvBridge(object):
         import numpy as np
 
         str_msg = cmprs_img_msg.data
-        buf = np.ndarray(shape=(1, len(str_msg)),
-                         dtype=np.uint8, buffer=cmprs_img_msg.data)
+        buf: 'NDArray[np.uint8]' = np.ndarray(shape=(1, len(str_msg)),
+                                              dtype=np.uint8, buffer=cmprs_img_msg.data)
         im = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED)
 
         if desired_encoding == 'passthrough':
@@ -144,7 +172,8 @@ class CvBridge(object):
 
         return res
 
-    def imgmsg_to_cv2(self, img_msg, desired_encoding='passthrough'):
+    def imgmsg_to_cv2(self, img_msg: sensor_msgs.msg.Image,
+                      desired_encoding: PassThroughEncoding = 'passthrough') -> 'MatLike':
         """
         Convert a sensor_msgs::Image message to an OpenCV :cpp:type:`cv::Mat`.
 
@@ -166,15 +195,15 @@ class CvBridge(object):
         If the image only has one channel, the shape has size 2 (width and height)
         """
         import numpy as np
-        dtype, n_channels = self.encoding_to_dtype_with_channels(img_msg.encoding)
-        dtype = np.dtype(dtype)
+        dtype_name, n_channels = self.encoding_to_dtype_with_channels(img_msg.encoding)
+        dtype = np.dtype(dtype_name)
         dtype = dtype.newbyteorder('>' if img_msg.is_bigendian else '<')
 
         img_buf = np.asarray(img_msg.data, dtype=dtype) if isinstance(img_msg.data, list) else img_msg.data
 
         if n_channels == 1:
-            im = np.ndarray(shape=(img_msg.height, int(img_msg.step/dtype.itemsize)),
-                            dtype=dtype, buffer=img_buf)
+            im: 'NDArray' = np.ndarray(shape=(img_msg.height, int(img_msg.step/dtype.itemsize)),
+                                       dtype=dtype, buffer=img_buf)
             im = np.ascontiguousarray(im[:img_msg.height, :img_msg.width])
         else:
             im = np.ndarray(shape=(img_msg.height, int(img_msg.step/dtype.itemsize/n_channels), n_channels),
@@ -197,7 +226,8 @@ class CvBridge(object):
 
         return res
 
-    def cv2_to_compressed_imgmsg(self, cvim, dst_format='jpg'):
+    def cv2_to_compressed_imgmsg(self, cvim: 'Mat', dst_format: DSTFormat = 'jpg'
+                                 ) -> sensor_msgs.msg.CompressedImage:
         """
         Convert an OpenCV :cpp:type:`cv::Mat` type to a ROS sensor_msgs::CompressedImage message.
 
@@ -236,7 +266,8 @@ class CvBridge(object):
 
         return cmprs_img_msg
 
-    def cv2_to_imgmsg(self, cvim, encoding='passthrough', header = None):
+    def cv2_to_imgmsg(self, cvim: 'Mat', encoding: PassThroughEncoding = 'passthrough',
+                      header: Optional['Header'] = None) -> sensor_msgs.msg.Image:
         """
         Convert an OpenCV :cpp:type:`cv::Mat` type to a ROS sensor_msgs::Image message.
 
