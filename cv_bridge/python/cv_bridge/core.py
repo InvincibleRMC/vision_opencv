@@ -126,7 +126,7 @@ class CvBridge(object):
         except RuntimeError as e:
             raise CvBridgeError(e)
 
-    def encoding_to_dtype_with_channels(self, encoding: ImageEncodings) -> Tuple[str, int]:
+    def encoding_to_dtype_with_channels(self, encoding: ImageEncodings) -> Tuple[NumpyDepths, int]:
         return self.cvtype2_to_dtype_with_channels(self.encoding_to_cvtype2(encoding))
 
     def compressed_imgmsg_to_cv2(self, cmprs_img_msg: sensor_msgs.msg.CompressedImage,
