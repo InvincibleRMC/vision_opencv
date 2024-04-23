@@ -41,7 +41,7 @@ import sensor_msgs.msg
 if TYPE_CHECKING:
     from cv2 import Mat
     from cv2.typing import MatLike
-    from numpy import dtype
+    from numpy import dtype, generic
     from numpy.typing import NDArray
     from std_msgs.msg import Header
 
@@ -110,7 +110,7 @@ class CvBridge(object):
                                      'float64': '64F'}
         self.numpy_type_to_cvtype.update(dict((v, k) for (k, v) in self.numpy_type_to_cvtype.items()))
 
-    def dtype_with_channels_to_cvtype2(self, dtype: 'dtype', n_channels: int) -> str:
+    def dtype_with_channels_to_cvtype2(self, dtype: 'dtype[generic]', n_channels: int) -> str:
         return '%sC%d' % (self.numpy_type_to_cvtype[dtype.name], n_channels)
 
     def cvtype2_to_dtype_with_channels(self, cvtype: int) -> Tuple[NumpyDepths, int]:
@@ -202,8 +202,8 @@ class CvBridge(object):
         img_buf = np.asarray(img_msg.data, dtype=dtype) if isinstance(img_msg.data, list) else img_msg.data
 
         if n_channels == 1:
-            im: 'NDArray' = np.ndarray(shape=(img_msg.height, int(img_msg.step/dtype.itemsize)),
-                                       dtype=dtype, buffer=img_buf)
+            im: 'NDArray[generic]' = np.ndarray(shape=(img_msg.height, int(img_msg.step/dtype.itemsize)),
+                                                dtype=dtype, buffer=img_buf)
             im = np.ascontiguousarray(im[:img_msg.height, :img_msg.width])
         else:
             im = np.ndarray(shape=(img_msg.height, int(img_msg.step/dtype.itemsize/n_channels), n_channels),
